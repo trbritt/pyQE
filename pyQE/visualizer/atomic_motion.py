@@ -288,7 +288,6 @@ class VisualizerCanvas(app.Canvas):
         self.speed = 2
 
         #init params for bonds
-        # self.nBonds = 6
         self.draw_bonds_bool = show_bonds
         self.programs_bonds = [gloo.Program(vert, frag) for _ in range(self.nBonds)]
         self.meshes = [MyMeshData() for _ in range(self.nBonds)]
@@ -333,7 +332,7 @@ class VisualizerCanvas(app.Canvas):
                     for i in range(NATOMS):
                         molecule[idt,:3] = NEW_ORIGIN + ATOM_POS_CAR[i,:]
                         molecule[idt, 3:6] = np.array(vesta_colors[self.input_json_data['atom_numbers'][i]])
-                        molecule[idt, 6] = vesta_radius[atomic_number[self.input_json_data['atom_types'][i]]]# 2 if i==0 else 0.75
+                        molecule[idt, 6] = vesta_radius[atomic_number[self.input_json_data['atom_types'][i]] + 1]# 2 if i==0 else 0.75
                         self.atom_numbers.append(self.input_json_data['atom_numbers'][i])
                         idt += 1
         self._nAtoms = molecule.shape[0]
@@ -369,14 +368,15 @@ class VisualizerCanvas(app.Canvas):
             ad = self.coords[a,:]
             bd = self.coords[b,:]
             length = np.sqrt(np.sum((ad-bd)**2))
-            cra = covalent_radii[ self.atom_numbers[ a ]]
-            crb = covalent_radii[ self.atom_numbers[ b ]]
+            cra = covalent_radii[ self.atom_numbers[ a ] + 1]
+            crb = covalent_radii[ self.atom_numbers[ b ] + 1]
             if (length < cra + crb) or (length < self.nndist):
                 self.bonds.append([a,b])
         self.nBonds = len(self.bonds)
         if self.nBonds > 40:
             print("HEADS UP this is a lot of bonds, and is gonna make this slow....")
-            
+            print("Only showing a few for the first (few) unit cell(s) is the default...")
+            self.nBonds = 6
         data = np.zeros(n, [('a_position', np.float32, 3),
                             ('a_color', np.float32, 3),
                             ('a_radius', np.float32)])
@@ -406,7 +406,7 @@ class VisualizerCanvas(app.Canvas):
 
     def on_mouse_press(self, event):
         if event.button == 2:
-            print("YES")
+            print("Found this easter egg, didn't ya?")
 
     def on_key_press(self, event):
 
@@ -429,13 +429,11 @@ class VisualizerCanvas(app.Canvas):
             else:
                 self.phi -= 0.5
 
-        if event.text in ['b','B']:
+        if event.text.upper() == "B":
             self.draw_bonds_bool = not self.draw_bonds_bool
 
-        # if event.text in ['c','C']:
-        #     self.save_animation()
 
-        if event.text in ['x','y','z', 'X', 'Y', 'Z']:
+        if event.text.upper() in ['X', 'Y', 'Z']:
             if event.text.upper() == 'X':
                 self.theta = 90
                 self.phi = 90
@@ -446,7 +444,7 @@ class VisualizerCanvas(app.Canvas):
                 self.theta = 0
                 self.phi = 0
 
-        if event.text in ['w', 's', 'a', 'd', 'W', 'S', 'A', 'D']:
+        if event.text.upper() in ['W', 'S', 'A', 'D']:
             if event.text.upper() == 'W':
                 self.coords[:,1] += 0.1
             elif event.text.upper() == 'S':

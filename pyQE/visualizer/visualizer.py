@@ -161,6 +161,10 @@ HELP_WINDOW="""
 
      A - retreat in x
 
+     Mouse wheel - zoom
+
+     Space bar - toggle animation state
+
      Left/Right - rotate azimuth
 
      Up/Down - rotate polar

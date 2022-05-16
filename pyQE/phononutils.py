@@ -921,7 +921,7 @@ class QePhonon(Phonon):
         self.eigenvectors = vec.view(dtype=float).reshape([self.nqpoints,nphons,nphons,2])
 
         #convert to reduced coordinates
-        self.qpoints = car_red(qpt,self.rec)
+        self.qpoints = qpt#car_red(qpt,self.rec)
         return self.eigenvalues, self.eigenvectors, self.qpoints
 
     def read_atoms(self,filename):
