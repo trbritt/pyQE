@@ -23,7 +23,7 @@ from os import cpu_count, chdir, getcwd
 import subprocess
 from pathlib import Path
 from .Kpoints import Kpoint_path, Bravais_lattice
-from .QEutils import hashabledict, PwIn
+from .QEutils import hashabledict, PwIn, red_car, car_red, rec_lat
 from .structures import Mode, symmetrize, extend_bragg
 
 
