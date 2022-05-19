@@ -7,7 +7,7 @@ def test_JSON(fname):
         'Filename' : '/home//trbritt//Desktop//MoS2//HT-MoS2//GGA//03_phononic_properties//matdyn//',
         'IFC'  : '../../q2r/HT-MoS2_PAW444.fc', #relative to directory above down one more
         'matdyn_exec' : '~//q-e-qe-6.5//bin//matdyn.x', #matdyn executable
-        'SCF_out' : '/home//trbritt//Desktop//MoS2//preliminary_data//one_phonon//mos2.out',
+        'NSCF_out' : '/home//trbritt//Desktop//MoS2//preliminary_data//one_phonon//mos2.out',
         'nmb_atoms' : 3,
         'File' : 'MoS2_GGA',
         'Path' : ['M', 'K'],

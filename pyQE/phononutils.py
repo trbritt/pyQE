@@ -158,7 +158,7 @@ def _prepare_modes(crystal, json_fname, modeordering, reflections, decimate=3):
 #=========================================================
 
 def get_summary_json_file(factor,params):
-    c = Crystal.from_pwscf(params['SCF_out'])
+    c = Crystal.from_pwscf(params['NSCF_out'])
     Space_group = c.international_number
     Bravais_group = c.hm_symbol[0]
     Bravais = Bravais_lattice(Space_group,Bravais_group)
