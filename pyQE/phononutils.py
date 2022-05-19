@@ -22,7 +22,7 @@ from functools import lru_cache, partial
 from os import cpu_count, chdir, getcwd
 import subprocess
 from pathlib import Path
-from .Kpoints import Kpoint_path, Bravais_lattice
+from .Qpoints import Qpoint_path, Bravais_lattice
 from .QEutils import hashabledict, PwIn, red_car, car_red, rec_lat
 from .structures import Mode, symmetrize, extend_bragg
 
@@ -57,15 +57,15 @@ def extract_info_ordered(fname, crystal, **kwargs):
     q_points = []
     # eig_vector = []
     freq = []
-    polarizations = np.zeros((len(modes['kpoints']),9,3,3), dtype=np.complex128)
+    polarizations = np.zeros((len(modes['qpoints']),9,3,3), dtype=np.complex128)
 
-    for nkpt in range(len(modes['kpoints'])):
+    for nkpt in range(len(modes['qpoints'])):
 
         q_pt = np.array(
             [
-                float(modes['kpoints'][nkpt][0]),
-                float(modes['kpoints'][nkpt][1]),
-                float(modes['kpoints'][nkpt][2]),
+                float(modes['qpoints'][nkpt][0]),
+                float(modes['qpoints'][nkpt][1]),
+                float(modes['qpoints'][nkpt][2]),
             ]
         )
         q_points.append(np.array(q_pt).dot(transf))
@@ -74,7 +74,7 @@ def extract_info_ordered(fname, crystal, **kwargs):
 
         for branch in range(9):
 
-            frequency = float(modes['frequencies'][branch][nkpt])
+            frequency = float(modes['eigenvalues'][branch][nkpt])
             frequencies.append(np.array(frequency))
 
             for atom in range(3):
@@ -101,7 +101,7 @@ def extract_info_ordered(fname, crystal, **kwargs):
     return q_points, freq, polarizations
 
 
-def prepare_modes(crystal_fname, json_fname, modeordering, reflections, decimate=3):
+def prepare_modes(crystal, json_fname, modeordering, reflections, decimate=3):
     """
     Prepare all modes for further calculations. Caching included.
 
@@ -120,15 +120,14 @@ def prepare_modes(crystal_fname, json_fname, modeordering, reflections, decimate
     modes : dict[str, Mode]
     """
 
-    return _prepare_modes(crystal_fname, json_fname, hashabledict(modeordering), reflections=tuple(reflections), decimate=int(decimate))
+    return _prepare_modes(crystal, json_fname, hashabledict(modeordering), reflections=tuple(reflections), decimate=int(decimate))
 
 
 @lru_cache(maxsize=16)
-def _prepare_modes(crystal_fname, json_fname, modeordering, reflections, decimate=3):
-    cryst = Crystal.from_pwscf(crystal_fname)
+def _prepare_modes(crystal, json_fname, modeordering, reflections, decimate=3):
 
     k_points, frequencies, polarizations = extract_info_ordered(
-        json_fname, crystal=cryst
+        json_fname, crystal=crystal
     )
     k_points = k_points[0::decimate, :]
     frequencies = frequencies[0::decimate, :]
@@ -141,7 +140,7 @@ def _prepare_modes(crystal_fname, json_fname, modeordering, reflections, decimat
             q_points=k_points,
             frequencies=frequencies[:, mode_index],
             polarizations=polarizations[:, mode_index, :, :],
-            crystal=cryst,
+            crystal=crystal,
         )
         for mode_index in range(frequencies.shape[1])
     ]
@@ -158,29 +157,24 @@ def _prepare_modes(crystal_fname, json_fname, modeordering, reflections, decimat
 # _prepare modes. We now include routines to make this json
 #=========================================================
 
-def get_json_file(factor,path,params):
-    c,Bravais=get_Input_v2(path)
+def get_summary_json_file(factor,params):
+    c = Crystal.from_pwscf(params['SCF_out'])
+    Space_group = c.international_number
+    Bravais_group = c.hm_symbol[0]
+    Bravais = Bravais_lattice(Space_group,Bravais_group)
     celldm_1=c.lattice_parameters[0]
     celldm_2=c.lattice_parameters[1]/c.lattice_parameters[0]
     celldm_3=c.lattice_parameters[2]/c.lattice_parameters[0]
     alpha=c.lattice_parameters[3]
     beta=c.lattice_parameters[4]
     gamma=c.lattice_parameters[5]
-    Kpoints,data_Kpoint=Kpoint_path(Bravais,factor,celldm_1=celldm_1,celldm_2=celldm_2,celldm_3=celldm_3,alpha=alpha,beta=beta,gamma=gamma)
+    qpoints,data_Kpoint=Qpoint_path(Bravais,factor,celldm_1=celldm_1,celldm_2=celldm_2,celldm_3=celldm_3,alpha=alpha,beta=beta,gamma=gamma)
     path_band=params['Filename']+'{}_bands.json'.format(params['File'])
     data_Kpoint.append(params['Filename'])
     with open(path_band, 'w') as outfile:
         json.dump(data_Kpoint, outfile)
-    return Kpoints
+    return qpoints
 
-def get_Input_v2(path):
-    c = Crystal.from_pwscf(path)
-
-    Space_group = c.international_number
-    Bravais_group = c.hm_symbol[0]
-    ###Get Bravais lattice
-    Bravais=Bravais_lattice(Space_group,Bravais_group)
-    return c,Bravais
 
 def getModes_matdyn(params, return_vals=False):
     """Get frequencies and eigenvectors (Polarizations) from matdyn.mode file""" 
@@ -235,7 +229,7 @@ def perform_matdyn(startpoint, endpoint, params):
 
     Input_file_name = '{}_path.matdyn.in'.format(params['File'])
     # input_file = '../../q2r/{}_881.fc'.format(params['File'])
-    input_file = '../../q2r/HT-MoS2_PAW444.fc'
+    input_file = params['IFC']
     output_file  = '{}_Gamma.freq'.format(params['File'])
 
     lines=[]
@@ -260,10 +254,7 @@ def perform_matdyn(startpoint, endpoint, params):
         g.write(
             '\n'.join(lines)
         )
-   
-    output = subprocess.run('~//q-e-qe-6.5//bin//matdyn.x < {} > tmp.out'.format(Input_file_name), shell = True, check = True)
-    # if output.returncode == 0:
-    #     print('run')
+    output = subprocess.run('{} < {} > tmp.out'.format(params['matdyn_exec'],Input_file_name), shell = True, check = True)
     chdir("../")
 
 
@@ -282,8 +273,7 @@ def get_start_end_points(modes, params):
     Sym = [s.replace('$' , '') for s in data_json[0]]
     Path_Sym = params['Path']
    
-    mode = modes[0]
-    kpts = mode.q_points
+    mode = modes[0]; kpts = mode.q_points
 
     if params['Gamma']:
         startpoint = np.array([0.0, 0.0, 0.0])
@@ -296,24 +286,24 @@ def get_start_end_points(modes, params):
     for length in data_json[1]:
         path.append(path[-1] + length + 1)
 
-    kpoints = np.zeros((len(Path_Sym), 3));  Symbols = ["" for i in range(len(Path_Sym))]
+    qpoints = np.zeros((len(Path_Sym), 3));  Symbols = ["" for i in range(len(Path_Sym))]
     for ind in range(len(Sym)):
         if Sym[ind] in Path_Sym:
             for ind2 in range(len(Path_Sym)):
                 if Path_Sym[ind2] == Sym[ind]:
                     Symbols[ind2] = Sym[ind]
-                    kpoints[ind2] = kpts[path[ind]]
+                    qpoints[ind2] = kpts[path[ind]]
         if Sym[ind] in Start_Sym and Sym[ind] != ['Gamma']:
             startpoint = kpts[path[ind]]
 
     lengths = []
-    for ind in range(1, len(kpoints)):
-        lengths.append(distance(kpoints[ind-1], kpoints[ind]))
+    for ind in range(1, len(qpoints)):
+        lengths.append(distance(qpoints[ind-1], qpoints[ind]))
 
-    endpoints=[kpoints[0]]
+    endpoints=[qpoints[0]]
     for sec in range(len(lengths)):
         for ind in range(1, lengths[sec] + 1):
-            endpoints.append(endpt(kpoints[sec], kpoints[sec + 1], lengths[sec], ind))
+            endpoints.append(endpt(qpoints[sec], qpoints[sec + 1], lengths[sec], ind))
     return startpoint, endpoints
 
 
@@ -327,10 +317,8 @@ def order_modes(modes_0, modes_1, modes_ends, end, params):
    
     for st1 in range(mod):
         for st2 in range(mod):
-            #print(modes_0[st1].frequencies[-1], modes_ends[st2].frequencies[(end-1)*100])
 
             difference = np.linalg.norm(modes_0[st1].frequencies - modes_1[st2].frequencies)
-
             diff_polar = np.linalg.norm(modes_0[st1].polarizations - modes_1[st2].polarizations)
 
             freq[st1][st2] = difference / params['points'] * 100.
@@ -355,7 +343,6 @@ def order_modes(modes_0, modes_1, modes_ends, end, params):
             if freq_end_1[f][k] == min_freq_end_1:
                 value_end_1.append(k)
            
-       
         if len(value) == 1:
             get_order.append(value[0])
         else:
@@ -376,30 +363,25 @@ def order_modes(modes_0, modes_1, modes_ends, end, params):
     # print(get_order)
    
     if sorted(get_order) == sorted(counter):
-       
         return get_order
-
     else:
         new_order = np.arange(mod)
         for f in range(mod):
             new_order[get_order_end_0[f]] = get_order_end_1[f]
-         
         print("Differences of frequencies is too low to determine the path, using end points to order modes.")
         return new_order 
 
 
-def computeJSON(params):
+def compute_onephonon_JSON(params, json_fname):
 
     modes, params = getModes_matdyn(params)
-    _ = get_json_file(1000, '/home//trbritt//Desktop//MoS2//preliminary_data//one_phonon//mos2.out', params  )
+    _ = get_summary_json_file(1000, params )
     startpoint, endpoints = get_start_end_points(modes, params)
     params.update({'Length' : len(endpoints)})
 
-    print("at the first ...")
-    ###Get endpoints to compare """Future steps is to compare it to the ends to avoid errors when modes are crossing"""
+    ###Get endpoints to compare
     perform_matdyn(endpoints[0], endpoints[-1], params)
     modes_ends, params = getModes_matdyn(params)
-    print("at the second ...")
 
     ###Perform interpolation between two points
     perform_matdyn(startpoint, endpoints[0], params)
@@ -479,6 +461,9 @@ def computeJSON(params):
     complete_polar = np.array(complete_polar, dtype = complex)
 
     complete_polar_real = complete_polar.real.tolist(); complete_polar_imaginary = complete_polar.imag.tolist()
+    new_list = {'eigenvalues' : complete_freq.tolist(), 'qpoints' : complete_qpoint.tolist(), 'polarizations real' : complete_polar_real, 'polarizations imaginary' : complete_polar_imaginary}
+    with open(json_fname, 'w') as fil:
+        json.dump(new_list, fil)
     return complete_freq, complete_qpoint, complete_polar_real, complete_polar_imaginary
 
 
@@ -730,7 +715,7 @@ class Phonon():
         #add final k-point
         self.highsym_qpts.append((self.nqpoints-1,''))
     
-        #if the labels are defined, assign them to the detected kpoints
+        #if the labels are defined, assign them to the detected qpoints
         if self.labels_qpts:
             nhiqpts = len(self.highsym_qpts)
             nlabels = len(self.labels_qpts)

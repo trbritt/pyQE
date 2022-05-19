@@ -37,8 +37,7 @@ IN_PLANE_MODES = sorted(set(MODE_ORDERING.keys()) - {"ZA", "ZO1", "ZO2"})
 ALL_MODES = sorted(set(MODE_ORDERING.keys()))
 NCORES = cpu_count() - 1
 
-
-def render(mode_str, reflections, smoothing_sigma=15):
+def render(modes, mode_str, reflections, smoothing_sigma=15):
     """
     Render the one-phonon structure factor map as visible on
     the Siwick research group detector, for a specific mode.
@@ -62,7 +61,6 @@ def render(mode_str, reflections, smoothing_sigma=15):
         Mode frequencies [meV]
     """
     reflections = tuple(reflections)  # need to be hashable for caching to work
-    modes = prepare_modes(INPUT/"mos2.out", INPUT / "complete_Data_New_v3.json", MODE_ORDERING, reflections)
     Ms = debye_waller_factors(modes)
 
     mode = modes[mode_str]
@@ -104,7 +102,7 @@ def render(mode_str, reflections, smoothing_sigma=15):
     return gaussian(image, sigma=smoothing_sigma), qx, qy, np.squeeze(interpolated_f)
 
 
-def calculate(mode_str, reflections):
+def calculate(crystal, json_fname, mode_str, reflections):
     """
     Plot the one-phonon structure factor map as visible on
     the Siwick research group detector, for a specific mode,
@@ -112,6 +110,8 @@ def calculate(mode_str, reflections):
 
     Parameters
     ----------
+    crystal : Crystal.Crystal
+        crystal object
     mode_str : str
         Mode name, e.g. "LA"
     reflections : iterable of 3-tuple
@@ -121,7 +121,7 @@ def calculate(mode_str, reflections):
     # that we  can plot as scatter.
     # Note that this is different than the hkls arrays store in the Mode class
     modes = prepare_modes(
-        INPUT/"mos2.out", INPUT / "complete_Data_New_v4.json", MODE_ORDERING, reflections
+        crystal, json_fname, MODE_ORDERING, reflections
     )
     cryst = modes["LA"].crystal
     astar, bstar, cstar = cryst.reciprocal_vectors
@@ -129,7 +129,7 @@ def calculate(mode_str, reflections):
         [h * astar + k * bstar + l * cstar for (h, k, l) in reflections]
     )
 
-    image, qx, qy, f = render(mode_str, reflections=reflections, smoothing_sigma=15)
+    image, qx, qy, f = render(modes, mode_str, reflections=reflections, smoothing_sigma=15)
     np.save(OUTPUT / f"{mode_str}_oneph.npy", image)
     np.save(OUTPUT / f"{mode_str}_freq.npy", f)
     np.save(OUTPUT / f"{mode_str}_freq_smoothed.npy", gaussian(f, sigma=15))
@@ -139,9 +139,16 @@ def calculate(mode_str, reflections):
 
 
 if __name__ == "__main__":
+    import os
+    CRYST =  Crystal.from_pwscf(INPUT/"mos2.out")
+    JSON_FNAME = INPUT / "local_data.json"
+    if not os.path.exists(JSON_FNAME):
+        from .test_onephonon_json import test_JSON
+        test_JSON(JSON_FNAME)
+
     in_plane_refls = filter(
-        lambda tup: tup[2] == 0, Crystal.from_pwscf(INPUT/"mos2.out").bounded_reflections(12)
+        lambda tup: tup[2] == 0,CRYST.bounded_reflections(12)
     )
     in_plane_refls = tuple(in_plane_refls)
     for mode in tqdm(ALL_MODES):
-        calculate(mode, in_plane_refls)
+        calculate(CRYST, JSON_FNAME, mode, in_plane_refls)
