@@ -389,7 +389,7 @@ def compute_onephonon_JSON(params, json_fname):
 
     complete_freq = []; complete_polar = []; complete_qpoint = []
     from tqdm import trange
-    for end in trange(1, len(endpoints)):
+    for end in trange(1, len(endpoints), desc="MATDYN on paths"):
 
         perform_matdyn(startpoint, endpoints[end], params)
         modes_1, params = getModes_matdyn(params)
