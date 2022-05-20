@@ -19,7 +19,7 @@ from crystals.parsers import PWSCFParser
 from scipy.constants import physical_constants
 import multiprocessing as mp
 from functools import lru_cache, partial
-from os import cpu_count, chdir, getcwd
+from os import cpu_count, chdir, getcwd, path
 import subprocess
 from pathlib import Path
 from .Qpoints import Qpoint_path, Bravais_lattice
@@ -832,10 +832,11 @@ class QePhonon(Phonon):
         prefix: <prefix>.scf file where the structure is stored
                 <prefix>.modes file that is the output of the matdyn.x or dynmat.x programs
     """
-    def __init__(self,prefix,name,reps=(3,3,3),folder='.',
+    def __init__(self,prefix,name=None,reps=(3,3,3),folder='.',
                  highsym_qpts=None,reorder=True,scf=None,modes=None):
         self.prefix = prefix
-        self.name = name
+        if name is None: self.name = prefix
+        else: self.name = name
         self.reps = reps
         self.folder = folder
         self.highsym_qpts = highsym_qpts
@@ -861,7 +862,7 @@ class QePhonon(Phonon):
         """
         Function to read the eigenvalues and eigenvectors from Quantum Expresso
         """
-        with open(filename[1:],'r') as f:
+        with open(path.basename(filename),'r') as f:
             file_list = f.readlines()
             file_str  = "".join(file_list)
 
@@ -913,7 +914,7 @@ class QePhonon(Phonon):
         """ 
         read the data from a quantum espresso input file
         """
-        pwin = PwIn(filename=filename[1:])
+        pwin = PwIn(filename=path.basename(filename))
         cell, pos, self.atom_types = pwin.get_atoms()
         self.cell = np.array(cell)*bohr_angstroem
         self.rec = rec_lat(cell)*pwin.alat
