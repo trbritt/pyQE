@@ -241,7 +241,7 @@ class PwIn():
         lines = iter(self.file_lines)
         #find ATOMIC_SPECIES keyword in file and read next line
         for line in lines:
-            if "ATOMIC_SPECIES" in line:
+            if line.replace(' ', '').startswith('ATOMIC SPECIES'):
                 for i in range(int(self.system["ntyp"])):
                     atype, mass, psp = next(lines).split()
                     self.atypes[atype] = [mass,psp]
@@ -324,7 +324,7 @@ class PwIn():
         lines = iter(self.file_lines)
         #find READ_ATOMS keyword in file and read next lines
         for line in lines:
-            if "ATOMIC_POSITIONS" in line:
+            if line.replace(' ', '').startswith('ATOMIC_POSITIONS'):
                 atomic_pos_type = line
                 self.atomic_pos_type = re.findall('([A-Za-z]+)',line)[-1]
                 for i in range(int(self.system["nat"])):
