@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-#=========================================================
+# =========================================================
 # Beginning of atomic_motion.py
 # @author: Tristan Britt
 # @email: tristan.britt@mail.mcgill.ca
-# @description: This file contains everything needed for the 
-# visualization of phonons in systems. It takes JSON 
+# @description: This file contains everything needed for the
+# visualization of phonons in systems. It takes JSON
 # format #2 for performance
 #
-# This software is part of a package distributed under the 
+# This software is part of a package distributed under the
 # GPLv3 license, see ..LICENSE.txt
-#=========================================================
+# =========================================================
 import numpy as np
 from vispy import gloo
 from vispy import app
@@ -20,13 +20,14 @@ import imageio
 from tqdm import trange
 from .bonds import vesta_radius, vesta_colors, covalent_radii, atomic_number
 from PyQt5 import QtWidgets
+import warnings
 
 app.use_app(backend_name="PyQt5", call_reuse=True)
 
-class Atom:
 
+class Atom:
     def __init__(self, name, atomic_id, position):
-        self.name = name 
+        self.name = name
         self.id = atomic_id
         self.xyz = position
         self.xyzt = self.xyz
@@ -42,7 +43,7 @@ class Atom:
 
     def getXYZT(self):
         return self.xyzt
-    
+
     def getname(self):
         return self.name
 
@@ -51,13 +52,13 @@ class Atom:
 
     def __str__(self):
         text = ""
-        text += "name: %s\n"%self.name
+        text += "name: %s\n" % self.name
         text += "atom:\n"
-        text += "%3s %3d"%(self.xyz,self.id) + "\n"
+        text += "%3s %3d" % (self.xyz, self.id) + "\n"
         return text
 
-class Vibrations:
 
+class Vibrations:
     def __init__(self, types, qpoints, atomic_positions, eigenvectors):
         self.types = types
         self.qpoints = qpoints
@@ -65,57 +66,82 @@ class Vibrations:
         self.eigenvectors = eigenvectors
         self.natoms = self.atom_pos_red.shape[0]
 
-        self.dt = 0.001 #time step in seconds
+        self.dt = 0.001  # time step in seconds
         self.time = 0
-        self.atoms = [Atom(self.types[i], i, self.atom_pos_red[i]) for i in range(self.natoms)]
+        self.atoms = [
+            Atom(self.types[i], i, self.atom_pos_red[i]) for i in range(self.natoms)
+        ]
 
     def getAtoms(self):
         return self.atoms
 
     def getVibration(self, index_q, index_nu):
         veckn = self.eigenvectors[index_q, index_nu, ...]
-        qpt   = self.qpoints[index_q,...]
-        self.atom_phase = np.zeros((3,1))
+        qpt = self.qpoints[index_q, ...]
+        self.atom_phase = np.zeros((3, 1))
         vibrations = np.zeros((self.natoms, 3), dtype=complex)
         for i in range(self.natoms):
             self.atom_phase[i] = qpt.dot(self.atom_pos_red[i])
 
         for i in range(self.natoms):
-            sprod = qpt.dot(np.array((1,1,1)))+ self.atom_phase[i] #change 111 depending on supercell
-            arg = sprod*2.0*np.pi
+            sprod = (
+                qpt.dot(np.array((1, 1, 1))) + self.atom_phase[i]
+            )  # change 111 depending on supercell
+            arg = sprod * 2.0 * np.pi
             phase = complex(np.cos(arg), np.sin(arg))
 
-            #displacement of the atoms
-            x = complex(veckn[i,0,0], veckn[i,0,1])*phase
-            y = complex(veckn[i,1,0], veckn[i,1,1])*phase
-            z = complex(veckn[i,2,0], veckn[i,2,1])*phase
-            vibrations[i] = np.array((x,y,z))
+            # displacement of the atoms
+            x = complex(veckn[i, 0, 0], veckn[i, 0, 1]) * phase
+            y = complex(veckn[i, 1, 0], veckn[i, 1, 1]) * phase
+            z = complex(veckn[i, 2, 0], veckn[i, 2, 1]) * phase
+            vibrations[i] = np.array((x, y, z))
         return vibrations
 
+
 DEFAULT_COLOR = (0, 0.2, 0.2, 0.5)
+
 
 def get_combinations(elements):
     combos = list()
     for i in range(len(elements)):
         for j in range(len(elements)):
-            combos.append([i,j])
+            combos.append([i, j])
     return combos
+
 
 def closest_node(node, nodes):
     nodes = np.asarray(nodes)
     deltas = nodes - node
-    dist_2 = np.einsum('ij,ij->i', deltas, deltas)
+    dist_2 = np.einsum("ij,ij->i", deltas, deltas)
     return np.sqrt(dist_2), np.argmin(dist_2)
 
-cart2polar = lambda x,y,z: (np.sqrt(x * x + y * y + z * z),np.arccos(x / np.sqrt(x * x + y * y)) * (-1 if y>0 else 1) * 180/np.pi ,np.arccos(z / np.sqrt(x * x + y * y + z * z)) * 180/np.pi)
+
+cart2polar = lambda x, y, z: (
+    np.sqrt(x * x + y * y + z * z),
+    np.arccos(x / np.sqrt(x * x + y * y)) * (-1 if y > 0 else 1) * 180 / np.pi,
+    np.arccos(z / np.sqrt(x * x + y * y + z * z)) * 180 / np.pi,
+)
+
 
 class MyMeshData(md.MeshData):
-    """ Add to Meshdata class the capability to export good data for gloo """
+    """Add to Meshdata class the capability to export good data for gloo"""
 
-    def __init__(self, vertices=None, faces=None, edges=None,
-                 vertex_colors=None, face_colors=None):
-        md.MeshData.__init__(self, vertices=None, faces=None, edges=None,
-                             vertex_colors=None, face_colors=None)
+    def __init__(
+        self,
+        vertices=None,
+        faces=None,
+        edges=None,
+        vertex_colors=None,
+        face_colors=None,
+    ):
+        md.MeshData.__init__(
+            self,
+            vertices=None,
+            faces=None,
+            edges=None,
+            vertex_colors=None,
+            face_colors=None,
+        )
 
     def get_glTriangles(self):
         """
@@ -124,9 +150,11 @@ class MyMeshData(md.MeshData):
             I1 is the indices for a filled mesh (use with GL_TRIANGLES)
             I2 is the indices for an outline mesh (use with GL_LINES)
         """
-        vtype = [('a_position', np.float32, 3),
-                 ('a_normal', np.float32, 3),
-                 ('a_color', np.float32, 4)]
+        vtype = [
+            ("a_position", np.float32, 3),
+            ("a_normal", np.float32, 3),
+            ("a_color", np.float32, 4),
+        ]
         vertices = self.get_vertices()
         normals = self.get_vertex_normals()
         faces = np.uint32(self.get_faces())
@@ -136,9 +164,9 @@ class MyMeshData(md.MeshData):
 
         nbrVerts = vertices.shape[0]
         V = np.zeros(nbrVerts, dtype=vtype)
-        V[:]['a_position'] = vertices
-        V[:]['a_normal'] = normals
-        V[:]['a_color'] = colors
+        V[:]["a_position"] = vertices
+        V[:]["a_normal"] = normals
+        V[:]["a_color"] = colors
 
         return V, faces.reshape((-1)), edges.reshape((-1))
 
@@ -260,16 +288,18 @@ void main()
                         + .35*specular * v_light, 1.0);
 }
 """
-class VisualizerCanvas(app.Canvas):
 
+
+class VisualizerCanvas(app.Canvas):
     def __init__(self, input_json_data, show_bonds=False):
-        app.Canvas.__init__(self, title='Molecular viewer',
-                            keys='interactive', size=(1200, 800))
+        app.Canvas.__init__(
+            self, title="Molecular viewer", keys="interactive", size=(1200, 800)
+        )
         self.input_json_data = input_json_data
         self.ps = self.pixel_scale
         self.size = 1200, 800
         self.translate = 40
-        self.program = gloo.Program(vertex, fragment)        
+        self.program = gloo.Program(vertex, fragment)
         self.view = translate((0, 0, -self.translate))
         self.model = np.eye(4, dtype=np.float32)
         self.projection = np.eye(4, dtype=np.float32)
@@ -287,7 +317,7 @@ class VisualizerCanvas(app.Canvas):
         self.amplitude = 0.06
         self.speed = 2
 
-        #init params for bonds
+        # init params for bonds
         self.draw_bonds_bool = show_bonds
         self.programs_bonds = [gloo.Program(vert, frag) for _ in range(self.nBonds)]
         self.meshes = [MyMeshData() for _ in range(self.nBonds)]
@@ -296,9 +326,9 @@ class VisualizerCanvas(app.Canvas):
         self.vertices_buf = list()
         self.filled_buf = list()
         self.outline_buf = list()
-        #bond sets
-        self.set_bond_program_param('u_model', self.model)
-        self.set_bond_program_param('u_view', self.view)
+        # bond sets
+        self.set_bond_program_param("u_model", self.model)
+        self.set_bond_program_param("u_view", self.view)
 
         self.apply_zoom()
 
@@ -313,41 +343,47 @@ class VisualizerCanvas(app.Canvas):
 
     def load_molecule(self, idq=2348, nu=1):
 
-        ATOM_POS_CAR = np.array(self.input_json_data['atom_pos_car'])
-        ATOM_POS_RED = np.array(self.input_json_data['atom_pos_red'])
-        NATOMS = self.input_json_data['natoms']
-        LAT = np.array(self.input_json_data['lattice'])
-        ATOM_TYPES = self.input_json_data['atom_types']
-        QPOINTS = np.asarray(self.input_json_data['qpoints'])
+        ATOM_POS_CAR = np.array(self.input_json_data["atom_pos_car"])
+        ATOM_POS_RED = np.array(self.input_json_data["atom_pos_red"])
+        NATOMS = self.input_json_data["natoms"]
+        LAT = np.array(self.input_json_data["lattice"])
+        ATOM_TYPES = self.input_json_data["atom_types"]
+        QPOINTS = np.asarray(self.input_json_data["qpoints"])
 
-        EIGENVECTORS = np.asarray(self.input_json_data['vectors']) 
+        EIGENVECTORS = np.asarray(self.input_json_data["vectors"])
 
         self.atom_numbers = list()
-        molecule = np.zeros((self.NX*self.NY*self.NZ*NATOMS, 7))
+        molecule = np.zeros((self.NX * self.NY * self.NZ * NATOMS, 7))
         idt = 0
         for nx in range(self.NX):
             for ny in range(self.NY):
                 for nz in range(self.NZ):
-                    NEW_ORIGIN = LAT[0,:] * nx + LAT[1,:] * ny + LAT[2,:] * nz
+                    NEW_ORIGIN = LAT[0, :] * nx + LAT[1, :] * ny + LAT[2, :] * nz
                     for i in range(NATOMS):
-                        molecule[idt,:3] = NEW_ORIGIN + ATOM_POS_CAR[i,:]
-                        molecule[idt, 3:6] = np.array(vesta_colors[self.input_json_data['atom_numbers'][i]])
-                        molecule[idt, 6] = vesta_radius[atomic_number[self.input_json_data['atom_types'][i]] + 1]# 2 if i==0 else 0.75
-                        self.atom_numbers.append(self.input_json_data['atom_numbers'][i])
+                        molecule[idt, :3] = NEW_ORIGIN + ATOM_POS_CAR[i, :]
+                        molecule[idt, 3:6] = np.array(
+                            vesta_colors[self.input_json_data["atom_numbers"][i]]
+                        )
+                        molecule[idt, 6] = vesta_radius[
+                            atomic_number[self.input_json_data["atom_types"][i]] + 1
+                        ]  # 2 if i==0 else 0.75
+                        self.atom_numbers.append(
+                            self.input_json_data["atom_numbers"][i]
+                        )
                         idt += 1
         self._nAtoms = molecule.shape[0]
 
         # The x,y,z values store in one array
         self.coords = molecule[:, :3]
-        self.coords[:,0] -= np.average(self.coords[:,0])
-        self.coords[:,1] -= np.average(self.coords[:,1])
+        self.coords[:, 0] -= np.average(self.coords[:, 0])
+        self.coords[:, 1] -= np.average(self.coords[:, 1])
 
         # The array that will store the color and alpha scale for all the atoms
         self.atomsColours = molecule[:, 3:6]
         # The array that will store the scale for all the atoms.
         self.atomsScales = molecule[:, 6]
 
-        #get displacement data
+        # get displacement data
         self.idq = idq
         self.nu = nu
         self.motions = Vibrations(ATOM_TYPES, QPOINTS, ATOM_POS_RED, EIGENVECTORS)
@@ -355,53 +391,74 @@ class VisualizerCanvas(app.Canvas):
 
     def load_data(self):
         n = self._nAtoms
-        #get nearest neighbor distance
+        # get nearest neighbor distance
         combinations = get_combinations(range(self._nAtoms))
-        distances = np.sqrt(np.sum((self.coords[combinations[:][0],:]-self.coords[combinations[:][1],:])**2))
-        self.nndist = distances[distances>0].min() + 0.05
+        distances = np.sqrt(
+            np.sum(
+                (
+                    self.coords[combinations[:][0], :]
+                    - self.coords[combinations[:][1], :]
+                )
+                ** 2
+            )
+        )
+        self.nndist = distances[distances > 0].min() + 0.05
 
-        #determine bonds, across lattice
+        # determine bonds, across lattice
         self.bonds = list()
         for i in range(len(combinations)):
             a = combinations[i][0]
             b = combinations[i][1]
-            ad = self.coords[a,:]
-            bd = self.coords[b,:]
-            length = np.sqrt(np.sum((ad-bd)**2))
-            cra = covalent_radii[ self.atom_numbers[ a ] + 1]
-            crb = covalent_radii[ self.atom_numbers[ b ] + 1]
+            ad = self.coords[a, :]
+            bd = self.coords[b, :]
+            length = np.sqrt(np.sum((ad - bd) ** 2))
+            cra = covalent_radii[self.atom_numbers[a] + 1]
+            crb = covalent_radii[self.atom_numbers[b] + 1]
             if (length < cra + crb) or (length < self.nndist):
-                self.bonds.append([a,b])
+                self.bonds.append([a, b])
         self.nBonds = len(self.bonds)
         if self.nBonds > 40:
-            print("HEADS UP this is a lot of bonds, and is gonna make this slow....")
-            print("Only showing a few for the first (few) unit cell(s) is the default...")
+            msg = "There are many bonds to be rendered (" \
+                + str(self.nBonds) \
+                + "). 3D renders will only show a few unit cells with bonds."
+            warnings.warn(
+                msg,
+                RuntimeWarning,
+            )
             self.nBonds = 6
-        data = np.zeros(n, [('a_position', np.float32, 3),
-                            ('a_color', np.float32, 3),
-                            ('a_radius', np.float32)])
+        data = np.zeros(
+            n,
+            [
+                ("a_position", np.float32, 3),
+                ("a_color", np.float32, 3),
+                ("a_radius", np.float32),
+            ],
+        )
 
-        data['a_position'] = self.coords
-        data['a_color'] = self.atomsColours
-        data['a_radius'] = self.atomsScales*self.ps
-
+        data["a_position"] = self.coords
+        data["a_color"] = self.atomsColours
+        data["a_radius"] = self.atomsScales * self.ps
 
         self.program.bind(gloo.VertexBuffer(data))
 
-        self.program['u_model'] = self.model
-        self.program['u_view'] = self.view
-        self.program['u_light_position'] = 0., 0., 2.
-        self.program['u_light_spec_position'] = -5., 5., -5.
-
+        self.program["u_model"] = self.model
+        self.program["u_view"] = self.view
+        self.program["u_light_position"] = 0.0, 0.0, 2.0
+        self.program["u_light_spec_position"] = -5.0, 5.0, -5.0
 
     def rebind_data(self):
-        data = np.zeros(self._nAtoms, [('a_position', np.float32, 3),
-                            ('a_color', np.float32, 3),
-                            ('a_radius', np.float32)])
+        data = np.zeros(
+            self._nAtoms,
+            [
+                ("a_position", np.float32, 3),
+                ("a_color", np.float32, 3),
+                ("a_radius", np.float32),
+            ],
+        )
 
-        data['a_position'] = self.coords
-        data['a_color'] = self.atomsColours
-        data['a_radius'] = self.atomsScales*self.ps
+        data["a_position"] = self.coords
+        data["a_color"] = self.atomsColours
+        data["a_radius"] = self.atomsScales * self.ps
         self.program.bind(gloo.VertexBuffer(data))
 
     def on_mouse_press(self, event):
@@ -410,64 +467,62 @@ class VisualizerCanvas(app.Canvas):
 
     def on_key_press(self, event):
 
-        if event.text == ' ':
+        if event.text == " ":
             self.stop_rotation = not self.stop_rotation
             if self.timer.running:
                 self.timer.stop()
             else:
                 self.timer.start()
 
-        if event.key in ['Left', 'Right']:
-            if event.key == 'Right':
-                self.theta += .5
+        if event.key in ["Left", "Right"]:
+            if event.key == "Right":
+                self.theta += 0.5
             else:
                 self.theta -= 0.5
 
-        if event.key in ['Up', 'Down']:
-            if event.key == 'Up':
-                self.phi += .5
+        if event.key in ["Up", "Down"]:
+            if event.key == "Up":
+                self.phi += 0.5
             else:
                 self.phi -= 0.5
 
         if event.text.upper() == "B":
             self.draw_bonds_bool = not self.draw_bonds_bool
 
-
-        if event.text.upper() in ['X', 'Y', 'Z']:
-            if event.text.upper() == 'X':
+        if event.text.upper() in ["X", "Y", "Z"]:
+            if event.text.upper() == "X":
                 self.theta = 90
                 self.phi = 90
-            elif event.text.upper() == 'Y':
+            elif event.text.upper() == "Y":
                 self.theta = 0
                 self.phi = 90
             else:
                 self.theta = 0
                 self.phi = 0
 
-        if event.text.upper() in ['W', 'S', 'A', 'D']:
-            if event.text.upper() == 'W':
-                self.coords[:,1] += 0.1
-            elif event.text.upper() == 'S':
-                self.coords[:,1] -= 0.1
-            elif event.text.upper() == 'A':
-                self.coords[:,0] -= 0.1
-            elif event.text.upper() == 'D':
-                self.coords[:,0] += 0.1
-            
-        if event.text in ['p','n','P','N']:
+        if event.text.upper() in ["W", "S", "A", "D"]:
+            if event.text.upper() == "W":
+                self.coords[:, 1] += 0.1
+            elif event.text.upper() == "S":
+                self.coords[:, 1] -= 0.1
+            elif event.text.upper() == "A":
+                self.coords[:, 0] -= 0.1
+            elif event.text.upper() == "D":
+                self.coords[:, 0] += 0.1
+
+        if event.text in ["p", "n", "P", "N"]:
             width, height = self.physical_size
-            if event.text.upper() == 'P':
+            if event.text.upper() == "P":
                 self.projection = perspective(25.0, width / float(height), 2.0, 100.0)
             else:
                 self.projection = ortho(-10, 10, -10, 10, 2.0, 100.0)
 
-        self.model = np.dot(rotate(self.theta, (0, 0, 1)),
-                            rotate(self.phi, (0, 1, 0)))
+        self.model = np.dot(rotate(self.theta, (0, 0, 1)), rotate(self.phi, (0, 1, 0)))
 
-        self.program['u_model'] = self.model
-        self.program['u_projection'] = self.projection
-        self.set_bond_program_param('u_projection', self.projection)
-        self.set_bond_program_param('u_model', self.model)
+        self.program["u_model"] = self.model
+        self.program["u_projection"] = self.projection
+        self.set_bond_program_param("u_projection", self.projection)
+        self.set_bond_program_param("u_model", self.model)
         if self.draw_bonds_bool:
             self.draw_bonds()
 
@@ -477,21 +532,21 @@ class VisualizerCanvas(app.Canvas):
     def on_timer(self, event):
         if not self.stop_rotation:
             arg = self.time * self.speed * 2.0 * np.pi
-            phase = complex(self.amplitude*np.cos(arg), self.amplitude*np.sin(arg))
+            phase = complex(self.amplitude * np.cos(arg), self.amplitude * np.sin(arg))
             self.phase += phase
             for idt in range(self._nAtoms):
-                vx = np.real( phase * self.vibrations[idt % 3, 0])
-                vy = np.real( phase * self.vibrations[idt % 3, 1])
-                vz = np.real( phase * self.vibrations[idt % 3, 2])
-                self.coords[idt,0] += vx
-                self.coords[idt,1] += vy
-                self.coords[idt,2] += vz
+                vx = np.real(phase * self.vibrations[idt % 3, 0])
+                vy = np.real(phase * self.vibrations[idt % 3, 1])
+                vz = np.real(phase * self.vibrations[idt % 3, 2])
+                self.coords[idt, 0] += vx
+                self.coords[idt, 1] += vy
+                self.coords[idt, 2] += vz
 
             self.rebind_data()
             self.time += self.dt
 
-        self.program['u_model'] = self.model
-        self.set_bond_program_param('u_model', self.model)
+        self.program["u_model"] = self.model
+        self.set_bond_program_param("u_model", self.model)
         if self.draw_bonds_bool:
             self.draw_bonds()
         self.update()
@@ -506,28 +561,28 @@ class VisualizerCanvas(app.Canvas):
             self.on_timer(event=None)
             self.timer.stop()
         return self.time, self.dt
-        
+
     def on_resize(self, event):
         width, height = event.physical_size
         gloo.set_viewport(0, 0, width, height)
         self.projection = perspective(25.0, width / float(height), 2.0, 100.0)
-        self.program['u_projection'] = self.projection
-        self.set_bond_program_param('u_projection', self.projection)
+        self.program["u_projection"] = self.projection
+        self.set_bond_program_param("u_projection", self.projection)
 
     def apply_zoom(self):
         width, height = self.physical_size
         gloo.set_viewport(0, 0, width, height)
         self.projection = perspective(25.0, width / float(height), 2.0, 100.0)
-        self.program['u_projection'] = self.projection
-        self.set_bond_program_param('u_projection', self.projection)
+        self.program["u_projection"] = self.projection
+        self.set_bond_program_param("u_projection", self.projection)
 
     def on_mouse_wheel(self, event):
         self.translate -= event.delta[1]
         self.translate = max(-1, self.translate)
         self.view = translate((0, 0, -self.translate))
 
-        self.program['u_view'] = self.view
-        self.set_bond_program_param('u_view', self.view)
+        self.program["u_view"] = self.view
+        self.set_bond_program_param("u_view", self.view)
 
         self.update()
 
@@ -538,24 +593,29 @@ class VisualizerCanvas(app.Canvas):
         self.filled_buf = list()
         self.outline_buf = list()
 
-        for idc, combo in enumerate(self.bonds[:self.nBonds]):
+        for idc, combo in enumerate(self.bonds[: self.nBonds]):
             a, b = combo
-            x = self.coords[b,0] - self.coords[a,0]
-            y = self.coords[b,1] - self.coords[a,1]
-            z = self.coords[b,2] - self.coords[a,2]
-            r, long, lat = cart2polar(x,y,z)
+            x = self.coords[b, 0] - self.coords[a, 0]
+            y = self.coords[b, 1] - self.coords[a, 1]
+            z = self.coords[b, 2] - self.coords[a, 2]
+            r, long, lat = cart2polar(x, y, z)
 
-            local_bond_mesh = gen.create_cylinder(rows=1, cols=6,radius=[0.1,0.1], length=r)
+            local_bond_mesh = gen.create_cylinder(
+                rows=1, cols=6, radius=[0.1, 0.1], length=r
+            )
             self.meshes[idc].set_vertices(local_bond_mesh.get_vertices())
             self.meshes[idc].set_faces(local_bond_mesh.get_faces())
             colors = np.tile(DEFAULT_COLOR, (self.meshes[idc].n_vertices, 1))
             self.meshes[idc].set_vertex_colors(colors)
-            vertices, filled, outline = self.meshes[idc].get_glTriangles() #this bond is in local custom mesh class, at origin
+            vertices, filled, outline = self.meshes[
+                idc
+            ].get_glTriangles()  # this bond is in local custom mesh class, at origin
 
-            align = np.dot(rotate(long, (0, 0, 1)),
-                           rotate(lat, (0, 1, 0)))
+            align = np.dot(rotate(long, (0, 0, 1)), rotate(lat, (0, 1, 0)))
             for i in range(vertices.shape[0]):
-                vertices[i]['a_position'] = -align[:3,:3]@(vertices[i]['a_position']) + self.coords[a,:]
+                vertices[i]["a_position"] = (
+                    -align[:3, :3] @ (vertices[i]["a_position"]) + self.coords[a, :]
+                )
 
             self.vertices.append(vertices)
             self.filled.append(filled)
@@ -571,14 +631,14 @@ class VisualizerCanvas(app.Canvas):
         if self.draw_bonds_bool:
             self.draw_bonds()
             # gloo.set_state(blend=False, depth_test=True,
-                            #    polygon_offset_fill=True, clear_color='black')
+            #    polygon_offset_fill=True, clear_color='black')
             for idc in range(self.nBonds):
-                self.programs_bonds[idc]['u_color'] = 1, 1, 1, 1
-                self.programs_bonds[idc].draw('triangles', self.filled_buf[idc])
+                self.programs_bonds[idc]["u_color"] = 1, 1, 1, 1
+                self.programs_bonds[idc].draw("triangles", self.filled_buf[idc])
 
         # gloo.set_state(depth_test=True, clear_color='black')
         if self.visible:
-            self.program.draw('points')
+            self.program.draw("points")
 
     def set_view(self, amplitude, speed):
         self.stop_rotation = True
@@ -591,23 +651,79 @@ class VisualizerCanvas(app.Canvas):
 
     def set_motion(self, idq, nu):
         self.stop_rotation = True
-        self.load_molecule(idq, nu) #reloads supercell in eq.
+        self.load_molecule(idq, nu)  # reloads supercell in eq.
         self.rebind_data()
         self.update()
         self.stop_rotation = not self.stop_rotation
 
     def save_animation(self, fname="animation.gif"):
         try:
-            writer = imageio.get_writer(fname, format='GIF-PIL', duration = self.dt)
+            writer = imageio.get_writer(fname, format="GIF-PIL", duration=self.dt)
             NSTEPS = int(1 / self.dt)
             for _ in trange(NSTEPS, desc="Saving animation"):
                 im = self.render(alpha=True)
-                time,_ = self.return_time()
+                time, _ = self.return_time()
                 writer.append_data(im)
             writer.close()
             self.timer.start()
         except:
             print("Failed to save gif....")
+
+    def renderStaticLattice(
+        self,
+        axis,
+        atom_dict,
+        bond_dict=None,
+        coords=None,
+        with_bonds=False,
+    ):
+        if coords is None:
+            coords = self.coords
+        axis.scatter(coords[:, 0], coords[:, 1], c=self.atomsColours, **atom_dict)
+        if with_bonds:
+            for idc, combo in enumerate(self.bonds):
+                a, b = combo
+                axis.plot(
+                    [coords[a, 0], coords[b, 0]],
+                    [coords[a, 1], coords[b, 1]],
+                    **bond_dict
+                )
+
+    def renderStaticDisplacedLattice(
+        self, axis, phase, atom_dict, bond_dict=None, with_bonds=False
+    ):
+        from copy import deepcopy
+
+        amplitude = atom_dict.pop("amplitude")
+        self.phase = amplitude * complex(np.cos(phase), np.sin(phase))
+        self.displaced_coords = deepcopy(self.coords)
+        for idt in range(self._nAtoms):
+            vx = np.real(self.phase * self.vibrations[idt % 3, 0])
+            vy = np.real(self.phase * self.vibrations[idt % 3, 1])
+            vz = np.real(self.phase * self.vibrations[idt % 3, 2])
+            self.displaced_coords[idt, 0] += vx
+            self.displaced_coords[idt, 1] += vy
+            self.displaced_coords[idt, 2] += vz
+
+            # check if displaced enough to add a circle
+            if np.sqrt(vx ** 2 + vy ** 2 + vz ** 2) > 0.25 * self.nndist:
+                drawCirc(
+                    axis,
+                    radius=amplitude,
+                    centX=self.coords[idt, 0],
+                    centY=self.coords[idt, 1],
+                    angle=110,
+                    theta2=260,
+                    orientation="right",
+                    color="k",
+                )
+        self.renderStaticLattice(
+            axis=axis,
+            coords=self.displaced_coords,
+            with_bonds=with_bonds,
+            atom_dict=atom_dict,
+            bond_dict=bond_dict,
+        )
 
 
 class VisualizerWidget(QtWidgets.QMainWindow):
@@ -616,13 +732,76 @@ class VisualizerWidget(QtWidgets.QMainWindow):
         WIDTH = 800
         HEIGHT = 800
         self.resize(WIDTH, HEIGHT)
-        self.canvas = VisualizerCanvas(input_json_data=input_json_data, show_bonds=False)
+        self.canvas = VisualizerCanvas(
+            input_json_data=input_json_data, show_bonds=False
+        )
         self._main = QtWidgets.QWidget()
         self.setCentralWidget(self._main)
         self._main.setLayout(QtWidgets.QVBoxLayout())
         self._main.layout().addWidget(self.canvas.native)
+
     def keyPressEvent(self, event):
         print(event.text())
-#=========================================================
+
+
+def drawCirc(
+    axis, radius, centX, centY, angle, theta2, color="black", orientation="right"
+):
+    from numpy import radians as rad
+    from matplotlib.patches import Arc, RegularPolygon
+
+    # ========Line
+    arc = Arc(
+        [centX, centY],
+        radius,
+        radius,
+        angle=angle,
+        theta1=0,
+        theta2=theta2,
+        capstyle="round",
+        linestyle=":",
+        lw=2,
+        color=color,
+        zorder=10,
+    )
+
+    # ellipse = Ellipse((centX, centY), width=radius, height=0.8*radius,
+    #                   facecolor=facecolor, **kwargs)
+    axis.add_patch(arc)
+
+    # ========Create the arrow head
+    if orientation == "right":
+        endX = centX + (radius / 2) * np.cos(
+            rad(theta2 + angle)
+        )  # Do trig to determine end position
+        endY = centY + (radius / 2) * np.sin(rad(theta2 + angle))
+        axis.add_patch(  # Create triangle as arrow head
+            RegularPolygon(
+                (endX, endY),  # (x,y)
+                3,  # number of vertices
+                radius / 9,  # radius
+                rad(angle + theta2),  # orientation
+                color=color,
+                zorder=10,
+            )
+        )
+    else:
+        endX = centX + (radius / 2) * np.cos(
+            rad(angle)
+        )  # Do trig to determine end position
+        endY = centY + (radius / 2) * np.sin(rad(angle))
+        axis.add_patch(  # Create triangle as arrow head
+            RegularPolygon(
+                (endX - 5, endY),  # (x,y)
+                3,  # number of vertices
+                radius / 9,  # radius
+                rad(angle) - np.pi / 4,  # orientation
+                color=color,
+                zorder=10,
+            )
+        )
+
+
+# =========================================================
 # End of atomic_motion.py
-#=========================================================
+# =========================================================
