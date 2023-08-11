@@ -57,7 +57,9 @@ def extract_info_ordered(fname, crystal, **kwargs):
     q_points = []
     # eig_vector = []
     freq = []
-    polarizations = np.zeros((len(modes['qpoints']),9,3,3), dtype=np.complex128)
+    N_ATOMS = len(crystal)
+    N_MODES = int(3*N_ATOMS)
+    polarizations = np.zeros((len(modes['qpoints']),N_MODES,N_ATOMS,3), dtype=np.complex128)
 
     for nkpt in range(len(modes['qpoints'])):
 
@@ -72,12 +74,12 @@ def extract_info_ordered(fname, crystal, **kwargs):
 
         frequencies = []
 
-        for branch in range(9):
+        for branch in range(N_MODES):
 
             frequency = float(modes['eigenvalues'][branch][nkpt])
             frequencies.append(np.array(frequency))
 
-            for atom in range(3):
+            for atom in range(N_ATOMS):
                 polarizations[nkpt][branch][atom][0] = np.array(float(modes['polarizations real'][branch][nkpt][atom][0]) + float(modes['polarizations imaginary'][branch][nkpt][atom][0]) * 1j)
                 polarizations[nkpt][branch][atom][1] = np.array(float(modes['polarizations real'][branch][nkpt][atom][1]) + float(modes['polarizations imaginary'][branch][nkpt][atom][1]) * 1j)
                 polarizations[nkpt][branch][atom][2] = np.array(float(modes['polarizations real'][branch][nkpt][atom][2]) + float(modes['polarizations imaginary'][branch][nkpt][atom][2]) * 1j)
@@ -706,7 +708,7 @@ class Phonon():
             return np.isclose(np.linalg.det(d),0,atol=1e-5)
 
         #iterate over qpoints
-        qpoints = self.qpoints;
+        qpoints = self.qpoints
         self.highsym_qpts = [[0,'']]
         for k in range(1,self.nqpoints-1):
             #detect high symmetry qpoints
@@ -832,25 +834,26 @@ class QePhonon(Phonon):
         prefix: <prefix>.scf file where the structure is stored
                 <prefix>.modes file that is the output of the matdyn.x or dynmat.x programs
     """
-    def __init__(self,prefix,name=None,reps=(3,3,3),folder='.',
+    def __init__(self,prefix,name=None,reps=(3,3,3),folder_scf='.', folder_matdyn=".",
                  highsym_qpts=None,reorder=True,scf=None,modes=None):
         self.prefix = prefix
         if name is None: self.name = prefix
         else: self.name = name
         self.reps = reps
-        self.folder = folder
+        self.folder_scf = folder_scf
+        self.folder_matdyn = folder_matdyn
         self.highsym_qpts = highsym_qpts
 
         #read atoms
-        if scf:   filename = "%s/%s"%(self.folder,scf)
-        else :    filename = "%s/%s.scf"%(self.folder,self.prefix)
+        if scf:   filename = "%s/%s"%(self.folder_scf,scf)
+        else :    filename = "%s/%s.scf"%(self.folder_scf,self.prefix)
         self.read_atoms(filename)
-        
+        print('Successfully read atoms')
         #read modes
-        if modes: filename = "%s/%s"%(self.folder,modes)
-        else :    filename = "%s/%s.modes"%(self.folder,self.prefix)
+        if modes: filename = "%s/%s"%(self.folder_matdyn,modes)
+        else :    filename = "%s/%s.modes"%(self.folder_matdyn,self.prefix)
         self.read_modes(filename)
-        
+        print('Successfully read modes')
 
         #reorder eigenvalues
         if reorder:
@@ -862,7 +865,7 @@ class QePhonon(Phonon):
         """
         Function to read the eigenvalues and eigenvectors from Quantum Expresso
         """
-        with open(path.basename(filename),'r') as f:
+        with open(filename,'r') as f:
             file_list = f.readlines()
             file_str  = "".join(file_list)
 
@@ -898,7 +901,11 @@ class QePhonon(Phonon):
                     #read eigenvectors
                     svec = re.findall('([+-]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)',file_list[eig_idx+1+i])
                     z = list(map(float,svec))
-                    cvec = [complex(z[0],z[1]),complex(z[2],z[3]),complex(z[4],z[5])]
+                    try:
+                        cvec = [complex(z[0],z[1]),complex(z[2],z[3]),complex(z[4],z[5])]
+                    except IndexError:
+                        print(f'NQ={k}/{nqpoints}\tNU={n}/{nphons}\tNA={i}/{atoms}\t z={z}')
+                        raise IndexError("AHH")
                     vec[k][n][i] = np.array(cvec, dtype=complex)
 
         self.nqpoints     = len(qpt)
@@ -914,7 +921,7 @@ class QePhonon(Phonon):
         """ 
         read the data from a quantum espresso input file
         """
-        pwin = PwIn(filename=path.basename(filename))
+        pwin = PwIn(filename=filename)
         cell, pos, self.atom_types = pwin.get_atoms()
         self.cell = np.array(cell)*bohr_angstroem
         self.rec = rec_lat(cell)*pwin.alat

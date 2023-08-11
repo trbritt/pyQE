@@ -21,6 +21,8 @@ from tqdm import trange
 from .bonds import vesta_radius, vesta_colors, covalent_radii, atomic_number
 from PyQt5 import QtWidgets
 import warnings
+from numpy import radians as rad
+from matplotlib.patches import Arc, RegularPolygon
 
 app.use_app(backend_name="PyQt5", call_reuse=True)
 
@@ -78,8 +80,9 @@ class Vibrations:
     def getVibration(self, index_q, index_nu):
         veckn = self.eigenvectors[index_q, index_nu, ...]
         qpt = self.qpoints[index_q, ...]
-        self.atom_phase = np.zeros((3, 1))
+        self.atom_phase = np.zeros((self.natoms, ))
         vibrations = np.zeros((self.natoms, 3), dtype=complex)
+        # print(self.atom_pos_red)
         for i in range(self.natoms):
             self.atom_phase[i] = qpt.dot(self.atom_pos_red[i])
 
@@ -304,13 +307,13 @@ class VisualizerCanvas(app.Canvas):
         self.model = np.eye(4, dtype=np.float32)
         self.projection = np.eye(4, dtype=np.float32)
 
-        self.NX = 4
+        self.NX = 1
         self.NY = 4
-        self.NZ = 1
+        self.NZ = 4
         self.load_molecule()
         self.load_data()
-        self.theta = 0
-        self.phi = 0
+        self.theta = 90
+        self.phi = 90 #defaults to rendering from X axis normal
         self.time = 0
         self.dt = 0.01
         self.phase = 0
@@ -341,26 +344,26 @@ class VisualizerCanvas(app.Canvas):
     def local_append(self, orig, appendee):
         return appendee if orig is None else np.append(orig, appendee, axis=0)
 
-    def load_molecule(self, idq=2348, nu=1):
+    def load_molecule(self, idq=0, nu=1):
 
-        ATOM_POS_CAR = np.array(self.input_json_data["atom_pos_car"])
-        ATOM_POS_RED = np.array(self.input_json_data["atom_pos_red"])
-        NATOMS = self.input_json_data["natoms"]
-        LAT = np.array(self.input_json_data["lattice"])
-        ATOM_TYPES = self.input_json_data["atom_types"]
-        QPOINTS = np.asarray(self.input_json_data["qpoints"])
+        self.atom_pos_car = np.array(self.input_json_data["atom_pos_car"])
+        self.ato_pos_red = np.array(self.input_json_data["atom_pos_red"])
+        self.n_atoms = self.input_json_data["natoms"]
+        self.lattice = np.array(self.input_json_data["lattice"])
+        self.atom_types = self.input_json_data["atom_types"]
+        self.qpoints = np.asarray(self.input_json_data["qpoints"])
 
-        EIGENVECTORS = np.asarray(self.input_json_data["vectors"])
+        self.eigenvectors = np.asarray(self.input_json_data["vectors"])
 
         self.atom_numbers = list()
-        molecule = np.zeros((self.NX * self.NY * self.NZ * NATOMS, 7))
+        molecule = np.zeros((self.NX * self.NY * self.NZ * self.n_atoms, 7))
         idt = 0
         for nx in range(self.NX):
             for ny in range(self.NY):
                 for nz in range(self.NZ):
-                    NEW_ORIGIN = LAT[0, :] * nx + LAT[1, :] * ny + LAT[2, :] * nz
-                    for i in range(NATOMS):
-                        molecule[idt, :3] = NEW_ORIGIN + ATOM_POS_CAR[i, :]
+                    NEW_ORIGIN = self.lattice[0, :] * nx + self.lattice[1, :] * ny + self.lattice[2, :] * nz
+                    for i in range(self.n_atoms):
+                        molecule[idt, :3] = NEW_ORIGIN + self.atom_pos_car[i, :]
                         molecule[idt, 3:6] = np.array(
                             vesta_colors[self.input_json_data["atom_numbers"][i]]
                         )
@@ -386,7 +389,7 @@ class VisualizerCanvas(app.Canvas):
         # get displacement data
         self.idq = idq
         self.nu = nu
-        self.motions = Vibrations(ATOM_TYPES, QPOINTS, ATOM_POS_RED, EIGENVECTORS)
+        self.motions = Vibrations(self.atom_types, self.qpoints, self.ato_pos_red, self.eigenvectors)
         self.vibrations = self.motions.getVibration(self.idq, self.nu)
 
     def load_data(self):
@@ -440,7 +443,6 @@ class VisualizerCanvas(app.Canvas):
         data["a_radius"] = self.atomsScales * self.ps
 
         self.program.bind(gloo.VertexBuffer(data))
-
         self.program["u_model"] = self.model
         self.program["u_view"] = self.view
         self.program["u_light_position"] = 0.0, 0.0, 2.0
@@ -679,7 +681,6 @@ class VisualizerCanvas(app.Canvas):
     ):
         if coords is None:
             coords = self.coords
-        axis.scatter(coords[:, 0], coords[:, 1], c=self.atomsColours, **atom_dict)
         if with_bonds:
             for idc, combo in enumerate(self.bonds):
                 a, b = combo
@@ -688,6 +689,10 @@ class VisualizerCanvas(app.Canvas):
                     [coords[a, 1], coords[b, 1]],
                     **bond_dict
                 )
+        size = atom_dict.pop('s')
+        axis.scatter(coords[:, 0], coords[:, 1], color='white', zorder=-10, s=size)
+        axis.scatter(coords[:, 0], coords[:, 1], c=self.atomsColours, s=size, **atom_dict)
+        
 
     def renderStaticDisplacedLattice(
         self, axis, phase, atom_dict, bond_dict=None, with_bonds=False
@@ -695,28 +700,54 @@ class VisualizerCanvas(app.Canvas):
         from copy import deepcopy
 
         amplitude = atom_dict.pop("amplitude")
-        self.phase = amplitude * complex(np.cos(phase), np.sin(phase))
+        atomic_phases = atom_dict.pop('atomic_phases')
+        direction = atom_dict.pop('direction')
+        angles = atom_dict.pop('angles')
         self.displaced_coords = deepcopy(self.coords)
+        ucs = [0]
         for idt in range(self._nAtoms):
-            vx = np.real(self.phase * self.vibrations[idt % 3, 0])
-            vy = np.real(self.phase * self.vibrations[idt % 3, 1])
-            vz = np.real(self.phase * self.vibrations[idt % 3, 2])
+            adjusted_phase = phase - atomic_phases[idt % self.n_atoms] * (idt // self.n_atoms) #every next uc gets another phase
+            self.phase = amplitude * complex(np.cos(adjusted_phase), np.sin(adjusted_phase))
+            vx = np.real(self.phase * self.vibrations[idt % self.n_atoms, 0])
+            vy = np.real(self.phase * self.vibrations[idt % self.n_atoms, 1])
+            vz = np.real(self.phase * self.vibrations[idt % self.n_atoms, 2])
             self.displaced_coords[idt, 0] += vx
             self.displaced_coords[idt, 1] += vy
             self.displaced_coords[idt, 2] += vz
 
             # check if displaced enough to add a circle
-            if np.sqrt(vx ** 2 + vy ** 2 + vz ** 2) > 0.25 * self.nndist:
-                drawCirc(
-                    axis,
-                    radius=amplitude,
-                    centX=self.coords[idt, 0],
-                    centY=self.coords[idt, 1],
-                    angle=110,
-                    theta2=260,
-                    orientation="right",
-                    color="k",
-                )
+            if np.sqrt(vx ** 2 + vy ** 2 + vz ** 2) > 0.24 * self.nndist:
+                if idt%self.n_atoms == 0:
+                    drawCirc(
+                        axis,
+                        radius=2*amplitude*np.sqrt(vx ** 2 + vy ** 2 + vz ** 2),
+                        centX=self.coords[idt, 0],
+                        centY=self.coords[idt, 1],
+                        angle=(idt // self.n_atoms) * np.rad2deg(atomic_phases[idt % self.n_atoms] ), 
+                        theta1=angles[0],
+                        theta2=angles[1], #260
+                        orientation=direction,
+                        color="k",
+                    )
+                    ucs.append(idt//self.n_atoms)
+                elif idt%self.n_atoms==1:
+                    val = 330+(idt // self.n_atoms)%self.n_atoms *np.rad2deg(atomic_phases[idt % self.n_atoms]/2 )
+                    val = int(val%360)
+                    if val==30:
+                        val += 180
+                    drawCirc(
+                        axis,
+                        radius=2*amplitude*np.sqrt(vx ** 2 + vy ** 2 + vz ** 2),
+                        centX=self.coords[idt, 0],
+                        centY=self.coords[idt, 1],
+                        angle=val,#-(idt // self.n_atoms) * np.rad2deg(atomic_phases[idt % self.n_atoms] ), 
+                        theta1=angles[0],
+                        theta2=angles[1], #260
+                        orientation=direction,
+                        color="k",
+                    )
+                
+
         self.renderStaticLattice(
             axis=axis,
             coords=self.displaced_coords,
@@ -745,10 +776,9 @@ class VisualizerWidget(QtWidgets.QMainWindow):
 
 
 def drawCirc(
-    axis, radius, centX, centY, angle, theta2, color="black", orientation="right"
+    axis, radius, centX, centY, angle, theta1, theta2, color="black", orientation="right"
 ):
-    from numpy import radians as rad
-    from matplotlib.patches import Arc, RegularPolygon
+
 
     # ========Line
     arc = Arc(
@@ -756,7 +786,7 @@ def drawCirc(
         radius,
         radius,
         angle=angle,
-        theta1=0,
+        theta1=theta1,
         theta2=theta2,
         capstyle="round",
         linestyle=":",
@@ -787,15 +817,15 @@ def drawCirc(
         )
     else:
         endX = centX + (radius / 2) * np.cos(
-            rad(angle)
+            rad(angle-theta2-10)
         )  # Do trig to determine end position
-        endY = centY + (radius / 2) * np.sin(rad(angle))
+        endY = centY + (radius / 2) * np.sin(rad(angle-theta2-10))
         axis.add_patch(  # Create triangle as arrow head
             RegularPolygon(
-                (endX - 5, endY),  # (x,y)
+                (endX, endY),  # (x,y)
                 3,  # number of vertices
                 radius / 9,  # radius
-                rad(angle) - np.pi / 4,  # orientation
+                rad(angle-theta2-10)-np.pi/4,  # orientation
                 color=color,
                 zorder=10,
             )

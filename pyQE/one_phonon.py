@@ -15,17 +15,17 @@
 import numpy as np
 import npstreams as ns
 from scipy.constants import physical_constants
-from .QEutils import coth, unique_by_rows, rowdot
+from .QEutils import coth, unique_by_rows, rowdot, change_of_basis, mapply
+from .structures import Mode
 from skued import affe
+from itertools import islice
 
-def ncells(crystal):
+def ncells(crystal, side_length=2_500_000, depth=12.72):
     """Calculate the number of unit cells N present in a crystal of graphite,
     250um x 250um"""
-    side_length = 2500000  #angstroms
-    depth = 12.72  #in angstroms
     return int(side_length * side_length * depth / crystal.volume)
 
-def phonon_amplitude(frequencies, temperature):
+def phonon_amplitude(frequencies, temperature, broadening=None):
     """
     Phonon amplitude within the Debye-Waller factor
 
@@ -45,12 +45,18 @@ def phonon_amplitude(frequencies, temperature):
     ----------
     Xu and Chiang (2005) Eq. 23
     """
+    if broadening is not None:
+        assert frequencies.shape[0] == broadening.size 
     # Factor of 1/N is calculated in the parent caller
     hbar = physical_constants["Planck constant over 2 pi in eV s"][0]
     kB = physical_constants["Boltzmann constant in eV/K"][0]
-    return (hbar / frequencies) * coth(hbar * frequencies / (2 * kB * temperature))
+    occupancy = (hbar / frequencies) * coth(hbar * frequencies / (2 * kB * temperature))
+    if broadening is None:
+        return occupancy
+    else:
+        return occupancy * broadening if temperature > 300 else occupancy #only broaden hot modes 
 
-def _debye_waller_factor(modes, temperatures, atm_index):
+def _debye_waller_factor(modes, temperatures, atm_index, broadening):
     """Calculate a Debye-Waller factor for one atom."""
     # This calculation assumes that the Debye-Waller factor is isotropic
     # i.e. it only depends on the magnitude of q and polarizations ek
@@ -69,20 +75,28 @@ def _debye_waller_factor(modes, temperatures, atm_index):
         # Really, it is a sum over all q, and it will be corrected
         # in the parent function.
         temp = temperatures[mode.name]
-        return (
+        # if broadening is not None: #if we want to look at broadening, take difference with eq occupations
+        #     amplitude = np.abs(phonon_amplitude(mode.frequencies, temp, broadening) - phonon_amplitude(mode.frequencies, temp))
+        # else:
+        #     amplitude = phonon_amplitude(mode.frequencies, temp, broadening) #broad is None, but still, for completeness
+        amplitude = phonon_amplitude(mode.frequencies, temp, broadening)
+        retval = (
             np.sum(
                 (1 / n)
-                * phonon_amplitude(mode.frequencies, temp)
+                * amplitude
                 * np.linalg.norm(mode.polarizations[:, atm_index, :], axis=1) ** 2
             )
             / nzones
         )
-
+        # print(f'Mode {mode.name} & Atom Indx {atm_index} : min {retval.min()}, max {retval.max()}')
+        return retval
     # This is the sum over modes
-    return ns.sum(accumulator(m) for m in modes.values() if m.name != "ZA")
+    retval =  ns.sum(accumulator(m) for m in modes.values() )#if m.name != "ZA")
+    # print(f'Atom Indx {atm_index} : {retval}')
+    return retval
 
 
-def debye_waller_factors(modes, temperatures=None):
+def debye_waller_factors(modes : dict[str, Mode], temperatures=None, broadening=None) -> list[np.ndarray]:
     """
     Compute the debye-waller factor based on all mode information.
     These modes are assumed to have been expanded, i.e. represent mode information
@@ -118,13 +132,13 @@ def debye_waller_factors(modes, temperatures=None):
     # The correction factor `nzones` accounts for the "double" counting
     # of multiple BZ in the sum
     tmp = [
-        prefactor(atom) * _debye_waller_factor(modes, temperatures, index)
+        prefactor(atom) * _debye_waller_factor(modes, temperatures, index, broadening)
         for index, atom in enumerate(atoms)
     ]
     return tmp
 
 
-def one_phonon_structure_factor(mode, dw_factors):
+def one_phonon_structure_factor(mode : Mode, dw_factors : list[np.ndarray]) -> np.ndarray:
     """
     Compute the one-phonon structure factor associated with a mode.
 
@@ -170,7 +184,35 @@ def one_phonon_structure_factor(mode, dw_factors):
 
     return np.nan_to_num(accumulator)
 
+def bragg_scattering(mode, reflections, dw_factors, cartesian_broadening=0.1):
+    qpoints, hkls, crystal = (
+        mode.q_points,
+        mode.hkls,
+        mode.crystal,
+    )
+    assert dw_factors[0].shape == (qpoints.shape[0],)
+    assert qpoints.shape == hkls.shape
 
+    atomic_positions = np.array([atm.coords_cartesian for atm in islice(sorted(crystal), len(crystal))])
+    astar, bstar, cstar = crystal.reciprocal_vectors
+    bragg_peaks = np.vstack(
+        [h * astar + k * bstar + l * cstar for (h, k, l) in reflections]
+    )
+    q_norm = np.linalg.norm(qpoints, axis=1, keepdims=True)
+    atoms = sorted(crystal, key=lambda a: a.tag)
+    accumulator = np.zeros(shape=(qpoints.shape[0], 1), dtype=complex)
+    from tqdm import tqdm
+    for bragg in tqdm(bragg_peaks, total=bragg_peaks.shape[0], desc='Bragg intensity'):
+        for atm_index, atm in enumerate(atoms):
+            arg = np.ones_like(
+                accumulator, dtype=complex
+            )  
+            arg *= np.exp(-1 * dw_factors[atm_index].reshape(-1, 1))
+            arg *= affe(atm, q_norm)
+            arg *= np.exp(-1j * rowdot(qpoints, atomic_positions[atm_index].reshape(-1,3)))
+            arg *= np.prod(np.exp(-0.5*(qpoints - bragg)**2/cartesian_broadening**2) / (cartesian_broadening * np.sqrt(2*np.pi)))
+            accumulator += arg
+    return np.abs( np.nan_to_num(accumulator) )**2
 #=========================================================
 # End of one_phonon.py
 #=========================================================

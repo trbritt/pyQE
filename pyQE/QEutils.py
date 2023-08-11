@@ -354,6 +354,7 @@ class PwIn():
                         self.cell_parameters[i] = [ float(x)*a for x in next(lines).split() ]
             if self.cell_units == 'angstrom' or self.cell_units == 'bohr':
                 if 'celldm(1)' in self.system: del self.system['celldm(1)']
+            
             if 'celldm(1)' not in list(self.system.keys()):
                 a = np.linalg.norm(self.cell_parameters[0])
         elif ibrav == 1:
@@ -383,6 +384,21 @@ class PwIn():
             self.cell_parameters = [[  a,   0,   0],
                                     [  0,   a,   0],
                                     [  0,   0, c*a]]
+        elif ibrav==8:
+            try:
+                a = float(self.system['celldm(1)'])
+                b = float(self.system['celldm(2)'])
+                c = float(self.system['celldm(3)'])
+                self.cell_parameters = [[a,   0,   0],
+                                        [0, a*b,   0],
+                                        [0,   0, a*c]]
+            except KeyError:
+                a = float(self.system['a'])
+                b = float(self.system['b'])
+                c = float(self.system['c'])
+                self.cell_parameters = [[a,   0,   0],
+                                        [0,   b,   0],
+                                        [0,   0,   c]]
         else:
             raise NotImplementedError('ibrav = %d not implemented'%ibrav)
         self.alat = a 
